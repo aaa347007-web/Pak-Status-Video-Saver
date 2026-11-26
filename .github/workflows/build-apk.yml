@@ -309,7 +309,7 @@ jobs:
               private void showBottomBanner() {
                   try {
                       bottomBanner = new BannerView(this, BANNER_AD_UNIT, new UnityBannerSize(320, 50));
-                      bottomBanner.setListener(new BannerView.Listener());
+                      bottomBanner.setListener(new BannerView.Listener() {});
                       FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                           ViewGroup.LayoutParams.WRAP_CONTENT,
                           ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -412,61 +412,4 @@ jobs:
                   }
               }
 
-              private void saveBase64ToGallery(String base64Data, String fileName) {
-                  try {
-                      String pureBase64 = base64Data.contains(",") ? base64Data.split(",")[1] : base64Data;
-                      byte[] bytes = Base64.decode(pureBase64, Base64.DEFAULT);
-                      boolean isVideo = fileName.endsWith(".mp4");
-                      File dir = Environment.getExternalStoragePublicDirectory(
-                          isVideo ? Environment.DIRECTORY_DOWNLOADS : Environment.DIRECTORY_PICTURES
-                      );
-                      if (!dir.exists()) dir.mkdirs();
-                      File file = new File(dir, fileName);
-                      FileOutputStream fos = new FileOutputStream(file);
-                      fos.write(bytes);
-                      fos.close();
-
-                      MediaScannerConnection.scanFile(
-                          MainActivity.this,
-                          new String[]{file.getAbsolutePath()},
-                          new String[]{isVideo ? "video/mp4" : "image/png"},
-                          null
-                      );
-                      Toast.makeText(MainActivity.this, "Saved to Gallery: " + fileName, Toast.LENGTH_SHORT).show();
-                  } catch (Exception e) {
-                      Toast.makeText(MainActivity.this, "Save error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                  }
-              }
-
-              private void loadRewardedAd() {
-                  UnityAds.load(REWARDED_AD_UNIT, new IUnityAdsLoadListener() {
-                      @Override
-                      public void onUnityAdsAdLoaded(String placementId) { rewardedReady = true; }
-                      @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) { rewardedReady = false; }
-                  });
-              }
-
-              private void loadInterstitialAd() {
-                  UnityAds.load(INTERSTITIAL_AD_UNIT, new IUnityAdsLoadListener() {
-                      @Override
-                      public void onUnityAdsAdLoaded(String placementId) { interstitialReady = true; }
-                      @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) { interstitialReady = false; }
-                  });
-              }
-          }
-          EOF
-
-      - name: Generate Fixed Signing Key & Build Signed APK
-        run: |
-          keytool -genkey -v -keystore pakstatus.keystore -alias pakstatus -keyalg RSA -keysize 2048 -validity 10000 -storepass pakfintechs123 -keypass pakfintechs123 -dname "CN=Zahid Nawaz, OU=PakFintechs, O=PakFintechs, L=Sargodha, S=Punjab, C=PK"
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$(pwd)/../pakstatus.keystore -Pandroid.injected.signing.store.password=pakfintechs123 -Pandroid.injected.signing.key.alias=pakstatus -Pandroid.injected.signing.key.password=pakfintechs123
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Pak-Status-Video-Saver-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+              private void saveBase64ToGallery(String base64Data, String fileNa
