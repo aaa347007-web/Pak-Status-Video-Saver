@@ -25,10 +25,17 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build Web App for Live OTA Updates
+      - name: Build Web App & Generate version.json for In-App Updates
         run: |
           npm install --legacy-peer-deps
           npm run build -- --base=./
+          cat <<EOF > dist/version.json
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "1.0.${{ github.run_number }}",
+            "apkUrl": "https://github.com/${{ github.repository }}/actions"
+          }
+          EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -86,8 +93,13 @@ jobs:
           fi
           npx cap sync android
 
+          # Set incrementing versionCode so Android updates without uninstalling
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+
           if [ -f "icon.png" ]; then
             rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            pip install Pillow || true
             python3 -c '
           from PIL import Image
           img = Image.open("icon.png").convert("RGBA")
@@ -96,18 +108,10 @@ jobs:
               resized = img.resize((size, size), Image.LANCZOS)
               resized.save(f"android/app/src/main/res/{folder}/ic_launcher.png")
               resized.save(f"android/app/src/main/res/{folder}/ic_launcher_round.png")
-          ' || (pip install Pillow && python3 -c '
-          from PIL import Image
-          img = Image.open("icon.png").convert("RGBA")
-          sizes = {"mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192}
-          for folder, size in sizes.items():
-              resized = img.resize((size, size), Image.LANCZOS)
-              resized.save(f"android/app/src/main/res/{folder}/ic_launcher.png")
-              resized.save(f"android/app/src/main/res/{folder}/ic_launcher_round.png")
-          ')
+          '
           fi
 
-      - name: Inject Unity Ads, Auto Video Ad Hook & Gallery Downloader
+      - name: Inject Unity Ads (Video + Bottom Banner), In-App Update Popup & Gallery Saver
         run: |
           cat <<'EOF' >> android/app/build.gradle
 
@@ -130,19 +134,27 @@ jobs:
           cat <<EOF > "$MAIN_ACT"
           $PKG_LINE
 
+          import android.app.AlertDialog;
           import android.app.DownloadManager;
           import android.content.Context;
+          import android.content.Intent;
+          import android.content.pm.PackageInfo;
+          import android.graphics.Bitmap;
           import android.media.MediaScannerConnection;
           import android.net.Uri;
           import android.os.Bundle;
           import android.os.Environment;
           import android.util.Base64;
+          import android.view.Gravity;
+          import android.view.ViewGroup;
           import android.webkit.CookieManager;
           import android.webkit.DownloadListener;
           import android.webkit.JavascriptInterface;
           import android.webkit.URLUtil;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.widget.FrameLayout;
           import android.widget.Toast;
           import com.getcapacitor.BridgeActivity;
           import com.unity3d.ads.IUnityAdsInitializationListener;
@@ -154,14 +166,28 @@ jobs:
           import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
           import com.unity3d.ads.UnityAds.UnityAdsShowError;
           import com.unity3d.ads.UnityAdsShowOptions;
+          import com.unity3d.services.banners.BannerErrorInfo;
+          import com.unity3d.services.banners.BannerView;
+          import com.unity3d.services.banners.UnityBannerSize;
+          import java.io.BufferedReader;
           import java.io.File;
           import java.io.FileOutputStream;
+          import java.io.InputStreamReader;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import org.json.JSONObject;
 
           public class MainActivity extends BridgeActivity {
               private static final String UNITY_GAME_ID = "800452851";
               private static final String REWARDED_AD_UNIT = "BP_Rewarded_Android";
               private static final String INTERSTITIAL_AD_UNIT = "BP_Interstitial_Android";
+              private static final String BANNER_AD_UNIT = "Banner_Android";
+              private static final String VERSION_JSON_URL = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/version.json";
               private static final boolean TEST_MODE = true; // Test ke baad false kar dein
+
+              private boolean rewardedReady = false;
+              private boolean interstitialReady = false;
+              private BannerView bottomBanner;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -172,8 +198,12 @@ jobs:
                   settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                   settings.setDomStorageEnabled(true);
                   settings.setJavaScriptEnabled(true);
+                  settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
                   settings.setUserAgentString("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                   CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+
+                  // Clear cache on launch so live GitHub edits appear immediately without uninstalling
+                  webView.clearCache(true);
 
                   webView.setDownloadListener(new DownloadListener() {
                       @Override
@@ -191,6 +221,7 @@ jobs:
                       public void onInitializationComplete() {
                           loadRewardedAd();
                           loadInterstitialAd();
+                          runOnUiThread(() -> showBottomBanner());
                       }
 
                       @Override
@@ -201,25 +232,34 @@ jobs:
                       @JavascriptInterface
                       public void showRewardedVideo() {
                           runOnUiThread(() -> {
-                              UnityAds.show(MainActivity.this, REWARDED_AD_UNIT, new UnityAdsShowOptions(), new IUnityAdsShowListener() {
-                                  @Override
-                                  public void onUnityAdsShowComplete(String placementId, UnityAdsShowCompletionState state) {
-                                      loadRewardedAd();
-                                      webView.evaluateJavascript("if(window.onUnityAdCompleted) window.onUnityAdCompleted();", null);
+                              if (rewardedReady) {
+                                  UnityAds.show(MainActivity.this, REWARDED_AD_UNIT, new UnityAdsShowOptions(), new IUnityAdsShowListener() {
+                                      @Override
+                                      public void onUnityAdsShowComplete(String placementId, UnityAdsShowCompletionState state) {
+                                          rewardedReady = false;
+                                          loadRewardedAd();
+                                          webView.evaluateJavascript("if(window.onUnityAdCompleted) window.onUnityAdCompleted();", null);
+                                      }
+
+                                      @Override
+                                      public void onUnityAdsShowFailure(String placementId, UnityAdsShowError error, String message) {
+                                          rewardedReady = false;
+                                          loadRewardedAd();
+                                          webView.evaluateJavascript("if(window.onUnityAdFailed) window.onUnityAdFailed();", null);
+                                      }
+
+                                      @Override
+                                      public void onUnityAdsShowStart(String placementId) {}
+
+                                      @Override
+                                      public void onUnityAdsShowClick(String placementId) {}
+                                  });
+                              } else {
+                                  loadRewardedAd();
+                                  if (interstitialReady) {
+                                      showInterstitialVideo();
                                   }
-
-                                  @Override
-                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowError error, String message) {
-                                      loadRewardedAd();
-                                      webView.evaluateJavascript("if(window.onUnityAdFailed) window.onUnityAdFailed();", null);
-                                  }
-
-                                  @Override
-                                  public void onUnityAdsShowStart(String placementId) {}
-
-                                  @Override
-                                  public void onUnityAdsShowClick(String placementId) {}
-                              });
+                              }
                           });
                       }
 
@@ -229,11 +269,13 @@ jobs:
                               UnityAds.show(MainActivity.this, INTERSTITIAL_AD_UNIT, new UnityAdsShowOptions(), new IUnityAdsShowListener() {
                                   @Override
                                   public void onUnityAdsShowComplete(String placementId, UnityAdsShowCompletionState state) {
+                                      interstitialReady = false;
                                       loadInterstitialAd();
                                   }
 
                                   @Override
                                   public void onUnityAdsShowFailure(String placementId, UnityAdsShowError error, String message) {
+                                      interstitialReady = false;
                                       loadInterstitialAd();
                                   }
 
@@ -256,12 +298,79 @@ jobs:
                           runOnUiThread(() -> saveBase64ToGallery(base64Data, fileName));
                       }
                   }, "AndroidAds");
+
+                  // Re-inject JS button & gallery hooks every time page finishes loading
+                  webView.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public void onPageFinished(WebView view, String url) {
+                          super.onPageFinished(view, url);
+                          injectHooks(view);
+                      }
+                  });
+
+                  checkForAppUpdate();
               }
 
-              @Override
-              public void onStart() {
-                  super.onStart();
-                  WebView webView = this.bridge.getWebView();
+              private void showBottomBanner() {
+                  try {
+                      bottomBanner = new BannerView(this, BANNER_AD_UNIT, new UnityBannerSize(320, 50));
+                      bottomBanner.setListener(new BannerView.IListener() {
+                          @Override
+                          public void onBannerLoaded(BannerView bannerAdView) {}
+                          @Override
+                          public void onBannerClick(BannerView bannerAdView) {}
+                          @Override
+                          public void onBannerFailedToLoad(BannerView bannerAdView, BannerErrorInfo errorInfo) {}
+                          @Override
+                          public void onBannerLeftApplication(BannerView bannerAdView) {}
+                      });
+                      FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          Gravity.TOP | Gravity.CENTER_HORIZONTAL
+                      );
+                      addContentView(bottomBanner, params);
+                      bottomBanner.load();
+                  } catch (Exception ignored) {}
+              }
+
+              private void checkForAppUpdate() {
+                  new Thread(() -> {
+                      try {
+                          PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+                          int currentCode = pInfo.versionCode;
+
+                          URL url = new URL(VERSION_JSON_URL + "?t=" + System.currentTimeMillis());
+                          HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                          conn.setConnectTimeout(5000);
+                          BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                          StringBuilder sb = new StringBuilder();
+                          String line;
+                          while ((line = reader.readLine()) != null) sb.append(line);
+                          reader.close();
+
+                          JSONObject json = new JSONObject(sb.toString());
+                          int latestCode = json.optInt("versionCode", currentCode);
+                          String latestName = json.optString("versionName", "New");
+                          String apkUrl = json.optString("apkUrl", "");
+
+                          if (latestCode > currentCode && !apkUrl.isEmpty()) {
+                              runOnUiThread(() -> {
+                                  new AlertDialog.Builder(MainActivity.this)
+                                      .setTitle("New Update Available (v" + latestName + ")")
+                                      .setMessage("Pak Status & Video Saver ka naya version aa gaya hai. Behtar speed aur ads ke liye update karein.")
+                                      .setPositiveButton("Update Now", (d, w) -> {
+                                          startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl)));
+                                      })
+                                      .setNegativeButton("Later", null)
+                                      .show();
+                              });
+                          }
+                      } catch (Exception ignored) {}
+                  }).start();
+              }
+
+              private void injectHooks(WebView webView) {
                   String hookJs =
                       "(function(){" +
                       "  if(window.__pakHooksInstalled) return; window.__pakHooksInstalled = true;" +
@@ -287,14 +396,14 @@ jobs:
                       "    var btn = e.target.closest('button, a');" +
                       "    if(btn && Date.now() > adCooldown){" +
                       "      var txt = (btn.innerText || '').toLowerCase();" +
-                      "      if(txt.includes('download') || txt.includes('mp4') || txt.includes('save') || txt.includes('hd')){" +
-                      "        adCooldown = Date.now() + 8000;" +
-                      "        setTimeout(function(){ window.AndroidAds.showRewardedVideo(); }, 400);" +
+                      "      if(txt.includes('download') || txt.includes('mp4') || txt.includes('save') || txt.includes('hd') || txt.includes('demo')){" +
+                      "        adCooldown = Date.now() + 6000;" +
+                      "        setTimeout(function(){ window.AndroidAds.showRewardedVideo(); }, 300);" +
                       "      }" +
                       "    }" +
                       "  }, true);" +
                       "})();";
-                  webView.postDelayed(() -> webView.evaluateJavascript(hookJs, null), 2500);
+                  webView.evaluateJavascript(hookJs, null);
               }
 
               private void enqueueGalleryDownload(String url, String fileName, String mimeType) {
@@ -346,31 +455,32 @@ jobs:
               private void loadRewardedAd() {
                   UnityAds.load(REWARDED_AD_UNIT, new IUnityAdsLoadListener() {
                       @Override
-                      public void onUnityAdsAdLoaded(String placementId) {}
+                      public void onUnityAdsAdLoaded(String placementId) { rewardedReady = true; }
                       @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) {}
+                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) { rewardedReady = false; }
                   });
               }
 
               private void loadInterstitialAd() {
                   UnityAds.load(INTERSTITIAL_AD_UNIT, new IUnityAdsLoadListener() {
                       @Override
-                      public void onUnityAdsAdLoaded(String placementId) {}
+                      public void onUnityAdsAdLoaded(String placementId) { interstitialReady = true; }
                       @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) {}
+                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) { interstitialReady = false; }
                   });
               }
           }
           EOF
 
-      - name: Build Debug APK
+      - name: Generate Fixed Signing Key & Build Signed APK
         run: |
+          keytool -genkey -v -keystore pakstatus.keystore -alias pakstatus -keyalg RSA -keysize 2048 -validity 10000 -storepass pakfintechs123 -keypass pakfintechs123 -dname "CN=Zahid Nawaz, OU=PakFintechs, O=PakFintechs, L=Sargodha, S=Punjab, C=PK"
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$(pwd)/../pakstatus.keystore -Pandroid.injected.signing.store.password=pakfintechs123 -Pandroid.injected.signing.key.alias=pakstatus -Pandroid.injected.signing.key.password=pakfintechs123
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Pak-Status-Video-Saver-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
