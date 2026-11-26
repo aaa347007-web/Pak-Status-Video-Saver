@@ -73,7 +73,7 @@ jobs:
           import com.unity3d.ads.UnityAds.UnityAdsInitializationError;
           import com.unity3d.ads.UnityAds.UnityAdsLoadError;
           import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
-          import com.unity3d.ads.UnityAdsShowFailure;
+          import com.unity3d.ads.UnityAds.UnityAdsShowError;
           import com.unity3d.ads.UnityAdsShowOptions;
 
           public class MainActivity extends BridgeActivity {
@@ -109,7 +109,7 @@ jobs:
                                   }
 
                                   @Override
-                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowFailure error, String message) {
+                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowError error, String message) {
                                       loadRewardedAd();
                                       bridge.getWebView().evaluateJavascript("if(window.onUnityAdFailed) window.onUnityAdFailed();", null);
                                   }
@@ -133,7 +133,7 @@ jobs:
                                   }
 
                                   @Override
-                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowFailure error, String message) {
+                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowError error, String message) {
                                       loadInterstitialAd();
                                   }
 
