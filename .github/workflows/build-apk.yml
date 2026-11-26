@@ -66,9 +66,9 @@ jobs:
           npm install --legacy-peer-deps
           npm run build -- --base=./
 
-      - name: Configure Capacitor Live OTA URL & Android Platform
+      - name: Configure Capacitor Live OTA URL, Icon & Android Platform
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
+          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
           LIVE_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           cat <<EOF > capacitor.config.json
           {
@@ -84,9 +84,16 @@ jobs:
           if [ ! -d "android" ]; then
             npx cap add android
           fi
+          if [ -f "icon.png" ]; then
+            mkdir -p assets
+            cp icon.png assets/icon-only.png
+            cp icon.png assets/icon-foreground.png
+            cp icon.png assets/splash.png
+            npx capacitor-assets generate --android --iconBackgroundColor '#064e3b'
+          fi
           npx cap sync android
 
-      - name: Inject Unity Ads, Auto Gallery Downloader & WebView Fix
+      - name: Inject Unity Ads, Auto Video Ad Hook & Gallery Downloader
         run: |
           cat <<'EOF' >> android/app/build.gradle
 
@@ -140,7 +147,7 @@ jobs:
               private static final String UNITY_GAME_ID = "800452851";
               private static final String REWARDED_AD_UNIT = "BP_Rewarded_Android";
               private static final String INTERSTITIAL_AD_UNIT = "BP_Interstitial_Android";
-              private static final boolean TEST_MODE = true;
+              private static final boolean TEST_MODE = true; // Test ke baad false kar dein
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -151,6 +158,7 @@ jobs:
                   settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                   settings.setDomStorageEnabled(true);
                   settings.setJavaScriptEnabled(true);
+                  settings.setUserAgentString("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                   CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
                   webView.setDownloadListener(new DownloadListener() {
@@ -242,23 +250,33 @@ jobs:
                   WebView webView = this.bridge.getWebView();
                   String hookJs =
                       "(function(){" +
-                      "  if(window.__galleryHookInstalled) return; window.__galleryHookInstalled = true;" +
+                      "  if(window.__pakHooksInstalled) return; window.__pakHooksInstalled = true;" +
+                      "  var adCooldown = 0;" +
                       "  document.addEventListener('click', function(e){" +
                       "    var a = e.target.closest('a[download]');" +
-                      "    if(!a) return;" +
-                      "    var href = a.getAttribute('href') || '';" +
-                      "    var fname = a.getAttribute('download') || ('PakStatus_' + Date.now() + '.mp4');" +
-                      "    if(href.startsWith('data:image/')){" +
-                      "      e.preventDefault(); window.AndroidAds.saveBase64Image(href, fname);" +
-                      "    } else if(href.startsWith('blob:')){" +
-                      "      e.preventDefault();" +
-                      "      fetch(href).then(r=>r.blob()).then(b=>{" +
-                      "        var rd = new FileReader();" +
-                      "        rd.onloadend = function(){ window.AndroidAds.saveBase64Image(rd.result, fname); };" +
-                      "        rd.readAsDataURL(b);" +
-                      "      });" +
-                      "    } else if(href.startsWith('http')){" +
-                      "      e.preventDefault(); window.AndroidAds.downloadMedia(href, fname, 'video/mp4');" +
+                      "    if(a){" +
+                      "      var href = a.getAttribute('href') || '';" +
+                      "      var fname = a.getAttribute('download') || ('PakStatus_' + Date.now() + '.mp4');" +
+                      "      if(href.startsWith('data:image/')){" +
+                      "        e.preventDefault(); window.AndroidAds.saveBase64Image(href, fname); return;" +
+                      "      } else if(href.startsWith('blob:')){" +
+                      "        e.preventDefault();" +
+                      "        fetch(href).then(r=>r.blob()).then(b=>{" +
+                      "          var rd = new FileReader();" +
+                      "          rd.onloadend = function(){ window.AndroidAds.saveBase64Image(rd.result, fname); };" +
+                      "          rd.readAsDataURL(b);" +
+                      "        }); return;" +
+                      "      } else if(href.startsWith('http')){" +
+                      "        e.preventDefault(); window.AndroidAds.downloadMedia(href, fname, 'video/mp4'); return;" +
+                      "      }" +
+                      "    }" +
+                      "    var btn = e.target.closest('button, a');" +
+                      "    if(btn && Date.now() > adCooldown){" +
+                      "      var txt = (btn.innerText || '').toLowerCase();" +
+                      "      if(txt.includes('download') || txt.includes('mp4') || txt.includes('save') || txt.includes('hd')){" +
+                      "        adCooldown = Date.now() + 8000;" +
+                      "        setTimeout(function(){ window.AndroidAds.showRewardedVideo(); }, 400);" +
+                      "      }" +
                       "    }" +
                       "  }, true);" +
                       "})();";
