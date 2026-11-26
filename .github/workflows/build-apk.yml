@@ -42,7 +42,6 @@ jobs:
 
       - name: Inject Unity Ads SDK & MainActivity Bridge
         run: |
-          # Guarantee Unity Ads dependency in android/app/build.gradle
           cat <<'EOF' >> android/app/build.gradle
 
           dependencies {
@@ -74,7 +73,7 @@ jobs:
           import com.unity3d.ads.UnityAds.UnityAdsInitializationError;
           import com.unity3d.ads.UnityAds.UnityAdsLoadError;
           import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
-          import com.unity3d.ads.UnityAds.UnityAdsShowFailure;
+          import com.unity3d.ads.UnityAdsShowFailure;
           import com.unity3d.ads.UnityAdsShowOptions;
 
           public class MainActivity extends BridgeActivity {
