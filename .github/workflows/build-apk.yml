@@ -413,3 +413,9 @@ jobs:
               }
 
               private void saveBase64ToGallery(String base64Data, String fileNa
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pak-Status-Video-Saver-APK
+          path: android/app/build/outputs/apk/release/*.apk
+          
