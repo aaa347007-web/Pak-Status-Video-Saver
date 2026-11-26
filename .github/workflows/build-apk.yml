@@ -63,15 +63,7 @@ jobs:
           import android.os.Bundle;
           import android.webkit.JavascriptInterface;
           import com.getcapacitor.BridgeActivity;
-          import com.unity3d.ads.IUnityAdsInitializationListener;
-          import com.unity3d.ads.IUnityAdsLoadListener;
-          import com.unity3d.ads.IUnityAdsShowListener;
-          import com.unity3d.ads.UnityAds;
-          import com.unity3d.ads.UnityAds.UnityAdsInitializationError;
-          import com.unity3d.ads.UnityAds.UnityAdsLoadError;
-          import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
-          import com.unity3d.ads.UnityAds.UnityAdsShowFailure;
-          import com.unity3d.ads.UnityAdsShowOptions;
+          import com.unity3d.ads.*;
 
           public class MainActivity extends BridgeActivity {
               private static final String UNITY_GAME_ID = "800452851";
@@ -91,7 +83,7 @@ jobs:
                       }
 
                       @Override
-                      public void onInitializationFailed(UnityAdsInitializationError error, String message) {}
+                      public void onInitializationFailed(UnityAds.UnityAdsInitializationError error, String message) {}
                   });
 
                   this.bridge.getWebView().addJavascriptInterface(new Object() {
@@ -100,13 +92,13 @@ jobs:
                           runOnUiThread(() -> {
                               UnityAds.show(MainActivity.this, REWARDED_AD_UNIT, new UnityAdsShowOptions(), new IUnityAdsShowListener() {
                                   @Override
-                                  public void onUnityAdsShowComplete(String placementId, UnityAdsShowCompletionState state) {
+                                  public void onUnityAdsShowComplete(String placementId, UnityAds.UnityAdsShowCompletionState state) {
                                       loadRewardedAd();
                                       bridge.getWebView().evaluateJavascript("if(window.onUnityAdCompleted) window.onUnityAdCompleted();", null);
                                   }
 
                                   @Override
-                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowFailure error, String message) {
+                                  public void onUnityAdsShowFailure(String placementId, UnityAds.UnityAdsShowFailure error, String message) {
                                       loadRewardedAd();
                                       bridge.getWebView().evaluateJavascript("if(window.onUnityAdFailed) window.onUnityAdFailed();", null);
                                   }
@@ -125,12 +117,12 @@ jobs:
                           runOnUiThread(() -> {
                               UnityAds.show(MainActivity.this, INTERSTITIAL_AD_UNIT, new UnityAdsShowOptions(), new IUnityAdsShowListener() {
                                   @Override
-                                  public void onUnityAdsShowComplete(String placementId, UnityAdsShowCompletionState state) {
+                                  public void onUnityAdsShowComplete(String placementId, UnityAds.UnityAdsShowCompletionState state) {
                                       loadInterstitialAd();
                                   }
 
                                   @Override
-                                  public void onUnityAdsShowFailure(String placementId, UnityAdsShowFailure error, String message) {
+                                  public void onUnityAdsShowFailure(String placementId, UnityAds.UnityAdsShowFailure error, String message) {
                                       loadInterstitialAd();
                                   }
 
@@ -150,7 +142,7 @@ jobs:
                       @Override
                       public void onUnityAdsAdLoaded(String placementId) {}
                       @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) {}
+                      public void onUnityAdsFailedToLoad(String placementId, UnityAds.UnityAdsLoadError error, String message) {}
                   });
               }
 
@@ -159,7 +151,7 @@ jobs:
                       @Override
                       public void onUnityAdsAdLoaded(String placementId) {}
                       @Override
-                      public void onUnityAdsFailedToLoad(String placementId, UnityAdsLoadError error, String message) {}
+                      public void onUnityAdsFailedToLoad(String placementId, UnityAds.UnityAdsLoadError error, String message) {}
                   });
               }
           }
