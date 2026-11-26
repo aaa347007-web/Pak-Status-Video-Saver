@@ -68,7 +68,7 @@ jobs:
 
       - name: Configure Capacitor Live OTA URL, Icon & Android Platform
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
+          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
           LIVE_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           cat <<EOF > capacitor.config.json
           {
@@ -84,14 +84,28 @@ jobs:
           if [ ! -d "android" ]; then
             npx cap add android
           fi
-          if [ -f "icon.png" ]; then
-            mkdir -p assets
-            cp icon.png assets/icon-only.png
-            cp icon.png assets/icon-foreground.png
-            cp icon.png assets/splash.png
-            npx capacitor-assets generate --android --iconBackgroundColor '#064e3b'
-          fi
           npx cap sync android
+
+          if [ -f "icon.png" ]; then
+            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            python3 -c '
+          from PIL import Image
+          img = Image.open("icon.png").convert("RGBA")
+          sizes = {"mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192}
+          for folder, size in sizes.items():
+              resized = img.resize((size, size), Image.LANCZOS)
+              resized.save(f"android/app/src/main/res/{folder}/ic_launcher.png")
+              resized.save(f"android/app/src/main/res/{folder}/ic_launcher_round.png")
+          ' || (pip install Pillow && python3 -c '
+          from PIL import Image
+          img = Image.open("icon.png").convert("RGBA")
+          sizes = {"mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192}
+          for folder, size in sizes.items():
+              resized = img.resize((size, size), Image.LANCZOS)
+              resized.save(f"android/app/src/main/res/{folder}/ic_launcher.png")
+              resized.save(f"android/app/src/main/res/{folder}/ic_launcher_round.png")
+          ')
+          fi
 
       - name: Inject Unity Ads, Auto Video Ad Hook & Gallery Downloader
         run: |
