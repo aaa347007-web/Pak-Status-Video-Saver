@@ -28,7 +28,7 @@ jobs:
       - name: Build Web App for Live OTA Updates
         run: |
           npm install --legacy-peer-deps
-          npm run build
+          npm run build -- --base=./
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies and build web app
         run: |
           npm install --legacy-peer-deps
-          npm run build
+          npm run build -- --base=./
 
       - name: Configure Capacitor Live OTA URL & Android Platform
         run: |
@@ -140,7 +140,7 @@ jobs:
               private static final String UNITY_GAME_ID = "800452851";
               private static final String REWARDED_AD_UNIT = "BP_Rewarded_Android";
               private static final String INTERSTITIAL_AD_UNIT = "BP_Interstitial_Android";
-              private static final boolean TEST_MODE = true; // Test ke baad false kar dein
+              private static final boolean TEST_MODE = true;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -153,7 +153,6 @@ jobs:
                   settings.setJavaScriptEnabled(true);
                   CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
-                  // Native Download Listener so ANY MP4 link downloads directly to Gallery
                   webView.setDownloadListener(new DownloadListener() {
                       @Override
                       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
@@ -240,7 +239,6 @@ jobs:
               @Override
               public void onStart() {
                   super.onStart();
-                  // Inject JS hook to intercept blob:/data: downloads and route them to Gallery
                   WebView webView = this.bridge.getWebView();
                   String hookJs =
                       "(function(){" +
