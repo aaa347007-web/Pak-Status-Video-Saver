@@ -42,9 +42,13 @@ jobs:
 
       - name: Inject Unity Ads SDK & MainActivity Bridge
         run: |
-          if ! grep -q "com.unity3d.ads:unity-ads" android/app/build.gradle; then
-            sed -i "/dependencies {/a \    implementation 'com.unity3d.ads:unity-ads:4.12.5'" android/app/build.gradle
-          fi
+          # Guarantee Unity Ads dependency in android/app/build.gradle
+          cat <<'EOF' >> android/app/build.gradle
+
+          dependencies {
+              implementation 'com.unity3d.ads:unity-ads:4.12.5'
+          }
+          EOF
 
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
@@ -63,7 +67,15 @@ jobs:
           import android.os.Bundle;
           import android.webkit.JavascriptInterface;
           import com.getcapacitor.BridgeActivity;
-          import com.unity3d.ads.*;
+          import com.unity3d.ads.IUnityAdsInitializationListener;
+          import com.unity3d.ads.IUnityAdsLoadListener;
+          import com.unity3d.ads.IUnityAdsShowListener;
+          import com.unity3d.ads.UnityAds;
+          import com.unity3d.ads.UnityAds.UnityAdsInitializationError;
+          import com.unity3d.ads.UnityAds.UnityAdsLoadError;
+          import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
+          import com.unity3d.ads.UnityAds.UnityAdsShowFailure;
+          import com.unity3d.ads.UnityAdsShowOptions;
 
           public class MainActivity extends BridgeActivity {
               private static final String UNITY_GAME_ID = "800452851";
