@@ -93,7 +93,6 @@ jobs:
           fi
           npx cap sync android
 
-          # Set incrementing versionCode so Android updates without uninstalling
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
 
@@ -111,7 +110,7 @@ jobs:
           '
           fi
 
-      - name: Inject Unity Ads (Video + Bottom Banner), In-App Update Popup & Gallery Saver
+      - name: Inject Unity Ads (Video + Top Banner), In-App Update Popup & Gallery Saver
         run: |
           cat <<'EOF' >> android/app/build.gradle
 
@@ -139,7 +138,6 @@ jobs:
           import android.content.Context;
           import android.content.Intent;
           import android.content.pm.PackageInfo;
-          import android.graphics.Bitmap;
           import android.media.MediaScannerConnection;
           import android.net.Uri;
           import android.os.Bundle;
@@ -166,7 +164,6 @@ jobs:
           import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState;
           import com.unity3d.ads.UnityAds.UnityAdsShowError;
           import com.unity3d.ads.UnityAdsShowOptions;
-          import com.unity3d.services.banners.BannerErrorInfo;
           import com.unity3d.services.banners.BannerView;
           import com.unity3d.services.banners.UnityBannerSize;
           import java.io.BufferedReader;
@@ -183,7 +180,7 @@ jobs:
               private static final String INTERSTITIAL_AD_UNIT = "BP_Interstitial_Android";
               private static final String BANNER_AD_UNIT = "Banner_Android";
               private static final String VERSION_JSON_URL = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/version.json";
-              private static final boolean TEST_MODE = true; // Test ke baad false kar dein
+              private static final boolean TEST_MODE = true;
 
               private boolean rewardedReady = false;
               private boolean interstitialReady = false;
@@ -202,7 +199,6 @@ jobs:
                   settings.setUserAgentString("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                   CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
-                  // Clear cache on launch so live GitHub edits appear immediately without uninstalling
                   webView.clearCache(true);
 
                   webView.setDownloadListener(new DownloadListener() {
@@ -299,7 +295,6 @@ jobs:
                       }
                   }, "AndroidAds");
 
-                  // Re-inject JS button & gallery hooks every time page finishes loading
                   webView.setWebViewClient(new WebViewClient() {
                       @Override
                       public void onPageFinished(WebView view, String url) {
@@ -314,16 +309,7 @@ jobs:
               private void showBottomBanner() {
                   try {
                       bottomBanner = new BannerView(this, BANNER_AD_UNIT, new UnityBannerSize(320, 50));
-                      bottomBanner.setListener(new BannerView.IListener() {
-                          @Override
-                          public void onBannerLoaded(BannerView bannerAdView) {}
-                          @Override
-                          public void onBannerClick(BannerView bannerAdView) {}
-                          @Override
-                          public void onBannerFailedToLoad(BannerView bannerAdView, BannerErrorInfo errorInfo) {}
-                          @Override
-                          public void onBannerLeftApplication(BannerView bannerAdView) {}
-                      });
+                      bottomBanner.setListener(new BannerView.Listener());
                       FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                           ViewGroup.LayoutParams.WRAP_CONTENT,
                           ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -484,5 +470,3 @@ jobs:
         with:
           name: Pak-Status-Video-Saver-APK
           path: android/app/build/outputs/apk/release/app-release.apk
-
-          
