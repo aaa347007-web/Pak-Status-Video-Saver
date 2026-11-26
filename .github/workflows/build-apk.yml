@@ -413,21 +413,3 @@ jobs:
               }
 
               private void saveBase64ToGallery(String base64Data, String fileNa
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Pak-Status-Video-Saver-APK
-          path: android/app/build/outputs/apk/release/*.apk
-        - name: Generate Fixed Signing Key & Build Signed APK
-        run: |
-          keytool -genkey -v -keystore pakstatus.keystore -alias pakstatus -keyalg RSA -keysize 2048 -validity 10000 -storepass pakfintechs123 -keypass pakfintechs123 -dname "CN=Zahid Nawaz, OU=PakFintechs, O=PakFintechs, L=Sargodha, S=Punjab, C=PK"
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$(pwd)/../pakstatus.keystore -Pandroid.injected.signing.store.password=pakfintechs123 -Pandroid.injected.signing.key.alias=pakstatus -Pandroid.injected.signing.key.password=pakfintechs123
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Pak-Status-Video-Saver-APK
-          path: android/app/build/outputs/apk/release/*.apk
-          
